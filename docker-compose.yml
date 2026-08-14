@@ -40,7 +40,7 @@ services:
       BIND_PORT: 8080
       RUST_LOG: info
     ports:
-      - "80813:8080"
+      - "47291:8080"
     depends_on:
       redis:
         condition: service_healthy
