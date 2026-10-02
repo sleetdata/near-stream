@@ -21,7 +21,7 @@ services:
     environment:
       MODE: ingester
       REDIS_URL: redis://redis:6379
-      NEARDATA_BASE: https://mainnet.neardata.xyz
+      NEARDATA_BASE: https://mainnet-teardata.intea.rs
       POLL_RETRY_MS: 1000
       RUST_LOG: info
     depends_on:

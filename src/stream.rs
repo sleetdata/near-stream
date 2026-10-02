@@ -143,6 +143,60 @@ pub struct StreamQuery {
     from_height: Option<u64>,
 }
 
+/// The homepage, embedded at compile time. `{{STREAM_URL}}` is replaced at
+/// request time with the origin the client actually reached us on, so the
+/// quickstart snippets are correct on any host, port, or proxy.
+const INDEX_HTML: &str = include_str!("index.html");
+
+/// Placeholder in `index.html` replaced with the request's origin.
+const STREAM_URL_PLACEHOLDER: &str = "{{STREAM_URL}}";
+
+/// Returns true if `s` is safe to interpolate into HTML.
+///
+/// The origin is derived from client-supplied headers, so it must be validated
+/// before being reflected into the page.
+fn is_safe_origin_part(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | ':' | '_'))
+}
+
+/// Resolves the origin (scheme + host) the client used to reach this service.
+///
+/// Honours `X-Forwarded-Proto` so the URL stays correct behind a TLS-terminating
+/// proxy, and falls back to the `Host` header. Returns `None` if either is
+/// missing or unsafe, in which case the placeholder is left untouched.
+fn request_origin(headers: &HeaderMap) -> Option<String> {
+    let host = headers.get(header::HOST)?.to_str().ok()?.trim();
+
+    let scheme = match headers.get("x-forwarded-proto") {
+        Some(value) => {
+            // May be a comma-separated list; the first entry is the original client.
+            let first = value.to_str().ok()?.split(',').next()?.trim();
+            match first {
+                "http" | "https" => first,
+                // Any other value (e.g. a spoofed scheme) is ignored.
+                _ => "http",
+            }
+        }
+        None => "http",
+    };
+
+    if !is_safe_origin_part(scheme) || !is_safe_origin_part(host) {
+        return None;
+    }
+
+    Some(format!("{scheme}://{host}"))
+}
+
+/// Renders the homepage with the stream URL filled in.
+fn render_index(headers: &HeaderMap) -> String {
+    match request_origin(headers) {
+        Some(origin) => INDEX_HTML.replace(STREAM_URL_PLACEHOLDER, &origin),
+        None => INDEX_HTML.to_string(),
+    }
+}
+
 /// Check if request is from a browser based on User-Agent and Accept headers
 fn is_browser_request(headers: &HeaderMap) -> bool {
     // First check: If Accept header explicitly requests text/event-stream, serve SSE
@@ -190,7 +244,7 @@ pub async fn stream_handler(
     // If request is from a browser, serve HTML homepage
     if is_browser_request(&headers) {
         info!("Serving HTML homepage to browser");
-        return Html(include_str!("index.html")).into_response();
+        return Html(render_index(&headers)).into_response();
     }
 
     // Otherwise, serve SSE stream

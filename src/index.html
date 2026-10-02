@@ -92,14 +92,14 @@
                             <div class="px-4 py-2 bg-gray-800 border-b border-gray-700 text-sm text-gray-400">
                                 cURL
                             </div>
-                            <pre class="p-4 overflow-x-auto"><code class="text-gray-300">curl -N https://live.near.tools</code></pre>
+                            <pre class="p-4 overflow-x-auto"><code class="text-gray-300">curl -N {{STREAM_URL}}</code></pre>
                         </div>
 
                         <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
                             <div class="px-4 py-2 bg-gray-800 border-b border-gray-700 text-sm text-gray-400">
                                 JavaScript / TypeScript
                             </div>
-                            <pre class="p-4 overflow-x-auto"><code class="text-gray-300">const eventSource = new EventSource("https://live.near.tools")
+                            <pre class="p-4 overflow-x-auto"><code class="text-gray-300">const eventSource = new EventSource("{{STREAM_URL}}")
 
 eventSource.addEventListener("block", (event) => {
   const block = JSON.parse(event.data)
@@ -115,7 +115,7 @@ eventSource.addEventListener("ping", (event) => {
                             <div class="px-4 py-2 bg-gray-800 border-b border-gray-700 text-sm text-gray-400">
                                 Resume from specific block
                             </div>
-                            <pre class="p-4 overflow-x-auto"><code class="text-gray-300">curl -N "https://live.near.tools?from_height=170727400"</code></pre>
+                            <pre class="p-4 overflow-x-auto"><code class="text-gray-300">curl -N "{{STREAM_URL}}?from_height=170727400"</code></pre>
                         </div>
                     </div>
                 </div>
