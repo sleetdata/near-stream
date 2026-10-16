@@ -16,15 +16,21 @@ use std::time::Duration;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-/// Helper to create a mock block with specified height and prev_height
+/// Helper to create a mock block with specified height and prev_height.
+///
+/// Shaped like the real neardata response (`block.header`) so the integration
+/// tests cover the same code path production runs.
 fn mock_block(height: u64, prev_height: u64) -> serde_json::Value {
     json!({
-        "header": {
-            "height": height,
-            "prev_height": prev_height,
-            "timestamp": 1234567890,
+        "block": {
+            "header": {
+                "height": height,
+                "prev_height": prev_height,
+                "timestamp": 1234567890,
+            },
+            "chunks": []
         },
-        "chunks": []
+        "shards": []
     })
 }
 
@@ -336,25 +342,15 @@ async fn test_immediate_finality_check_on_unavailable_block() {
         .mount(&mock_server)
         .await;
 
-    // Lookahead blocks 502, 503 - also return null (can't confirm via lookahead)
-    Mock::given(method("GET"))
-        .and(path("/v0/block/502"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::Value::Null))
-        .mount(&mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/v0/block/503"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::Value::Null))
-        .mount(&mock_server)
-        .await;
-
-    // Block 504 onwards are available - block 504 points to 500 (skipping 501-503)
-    Mock::given(method("GET"))
-        .and(path("/v0/block/504"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(mock_block(504, 500)))
-        .mount(&mock_server)
-        .await;
+    // Lookahead blocks 502, 503, 504 - all return null so the lookahead
+    // branch can't confirm a skip, forcing the finality fallback to run.
+    for lookahead_height in [502u64, 503, 504] {
+        Mock::given(method("GET"))
+            .and(path(format!("/v0/block/{}", lookahead_height)))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::Value::Null))
+            .mount(&mock_server)
+            .await;
+    }
 
     // Remaining blocks
     for height in 505..=525 {

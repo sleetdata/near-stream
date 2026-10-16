@@ -143,7 +143,8 @@ pub async fn run_ingestor(cfg: IngestConfig, mut redis_conn: ConnectionManager) 
                         Ok(BlockFetchResult::Found(block)) => {
                             // Found a block - check its prev_height
                             if let Some(prev_height) = block
-                                .pointer("/header/prev_height")
+                                .pointer("/block/header/prev_height")
+                                .or_else(|| block.pointer("/header/prev_height"))
                                 .and_then(|v| v.as_u64())
                             {
                                 match prev_height.cmp(&next_height) {
@@ -268,9 +269,11 @@ mod tests {
         // Block 170797835 returns null (skipped by validator)
         // Block 170797836 exists and points back to 170797834
         let block_170797836 = json!({
-            "header": {
-                "height": 170797836,
-                "prev_height": 170797834  // Skips over 170797835!
+            "block": {
+                "header": {
+                    "height": 170797836,
+                    "prev_height": 170797834  // Skips over 170797835!
+                }
             }
         });
 
@@ -279,7 +282,8 @@ mod tests {
         let next_block = &block_170797836;
 
         let prev_height = next_block
-            .pointer("/header/prev_height")
+            .pointer("/block/header/prev_height")
+            .or_else(|| next_block.pointer("/header/prev_height"))
             .and_then(|v| v.as_u64());
 
         assert_eq!(prev_height, Some(170797834));
@@ -294,9 +298,11 @@ mod tests {
     fn test_sequential_blocks_not_skipped() {
         // Sequential blocks with no gaps
         let block_101 = json!({
-            "header": {
-                "height": 101,
-                "prev_height": 100  // Sequential, not skipped
+            "block": {
+                "header": {
+                    "height": 101,
+                    "prev_height": 100  // Sequential, not skipped
+                }
             }
         });
 
@@ -304,7 +310,8 @@ mod tests {
         let next_block = &block_101;
 
         let prev_height = next_block
-            .pointer("/header/prev_height")
+            .pointer("/block/header/prev_height")
+            .or_else(|| next_block.pointer("/header/prev_height"))
             .and_then(|v| v.as_u64());
 
         assert_eq!(prev_height, Some(100));
@@ -321,9 +328,11 @@ mod tests {
         // Blocks 170866966 and 170866967 both return null (skipped)
         // Block 170866968 exists and points back to 170866965
         let block_170866968 = json!({
-            "header": {
-                "height": 170866968,
-                "prev_height": 170866965  // Skips over 170866966 and 170866967!
+            "block": {
+                "header": {
+                    "height": 170866968,
+                    "prev_height": 170866965  // Skips over 170866966 and 170866967!
+                }
             }
         });
 
@@ -332,7 +341,8 @@ mod tests {
         let lookahead_block = &block_170866968;
 
         let prev_height = lookahead_block
-            .pointer("/header/prev_height")
+            .pointer("/block/header/prev_height")
+            .or_else(|| lookahead_block.pointer("/header/prev_height"))
             .and_then(|v| v.as_u64());
 
         assert_eq!(prev_height, Some(170866965));
