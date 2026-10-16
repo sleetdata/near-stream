@@ -43,6 +43,7 @@ impl Mode {
 struct Config {
     mode: Mode,
     neardata_base: String,
+    last_block_path: String,
     redis_url: String,
     poll_retry_ms: u64,
     bind_addr: String,
@@ -51,10 +52,15 @@ struct Config {
 
 impl Config {
     fn from_env() -> Self {
+        let last_block_path = match env::var("INGEST_MODE").as_deref() {
+            Ok("optimistic") => "/v0/last_block/optimistic".to_string(),
+            _ => "/v0/last_block/final".to_string(),
+        };
         Self {
             mode: Mode::from_env(),
             neardata_base: env::var("NEARDATA_BASE")
                 .unwrap_or_else(|_| "https://mainnet.neardata.xyz".to_string()),
+            last_block_path,
             redis_url: env::var("REDIS_URL")
                 .unwrap_or_else(|_| "redis://localhost:6379".to_string()),
             poll_retry_ms: env::var("POLL_RETRY_MS")
@@ -101,6 +107,7 @@ async fn main() -> anyhow::Result<()> {
 
             let ingest_cfg = IngestConfig {
                 neardata_base: config.neardata_base,
+                last_block_path: config.last_block_path,
             };
 
             run_ingestor(ingest_cfg, redis_conn).await?;

@@ -106,6 +106,7 @@ async fn test_skipped_block_via_lookahead() {
     // Run ingester in background
     let config = near_stream::ingest::IngestConfig {
         neardata_base: mock_server.uri(),
+        last_block_path: "/v0/last_block/final".to_string(),
     };
 
     let ingest_handle =
@@ -189,6 +190,7 @@ async fn test_rate_limit_causes_backoff() {
 
     let config = near_stream::ingest::IngestConfig {
         neardata_base: mock_server.uri(),
+        last_block_path: "/v0/last_block/final".to_string(),
     };
 
     let ingest_handle =
@@ -279,6 +281,7 @@ async fn test_api_lag_eventually_succeeds() {
 
     let config = near_stream::ingest::IngestConfig {
         neardata_base: mock_server.uri(),
+        last_block_path: "/v0/last_block/final".to_string(),
     };
 
     let ingest_handle =
@@ -374,6 +377,7 @@ async fn test_immediate_finality_check_on_unavailable_block() {
 
     let config = near_stream::ingest::IngestConfig {
         neardata_base: mock_server.uri(),
+        last_block_path: "/v0/last_block/final".to_string(),
     };
 
     let ingest_handle =
@@ -484,6 +488,7 @@ async fn test_consecutive_skipped_blocks() {
 
     let config = near_stream::ingest::IngestConfig {
         neardata_base: mock_server.uri(),
+        last_block_path: "/v0/last_block/final".to_string(),
     };
 
     let ingest_handle =
@@ -504,4 +509,68 @@ async fn test_consecutive_skipped_blocks() {
     );
 
     ingest_handle.abort();
+}
+
+/// `INGEST_MODE=optimistic` switches the bootstrap endpoint from
+/// `/v0/last_block/final` to `/v0/last_block/optimistic`. The body fetch
+/// path is the same, so this is just a smoke test that the ingester uses
+/// the configured path instead of hardcoding one.
+#[tokio::test]
+async fn test_optimistic_bootstrap_path() {
+    let mock_server = MockServer::start().await;
+
+    // Bootstrap redirect from the optimistic path
+    let final_url = format!("{}/v0/block/700", mock_server.uri());
+    Mock::given(method("GET"))
+        .and(path("/v0/last_block/optimistic"))
+        .respond_with(
+            ResponseTemplate::new(302).insert_header("Location", final_url.as_str()),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let block_700 = mock_block(700, 699);
+    Mock::given(method("GET"))
+        .and(path("/v0/block/700"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&block_700))
+        .mount(&mock_server)
+        .await;
+
+    // The final path must NOT be requested when optimistic is configured.
+    let final_path_hit = Arc::new(AtomicUsize::new(0));
+    let final_counter = final_path_hit.clone();
+    Mock::given(method("GET"))
+        .and(path("/v0/last_block/final"))
+        .respond_with(move |_: &wiremock::Request| {
+            final_counter.fetch_add(1, Ordering::SeqCst);
+            ResponseTemplate::new(500)
+        })
+        .mount(&mock_server)
+        .await;
+
+    let redis_client = redis::Client::open("redis://localhost:6379").unwrap();
+    let mut redis_conn = redis::aio::ConnectionManager::new(redis_client)
+        .await
+        .unwrap();
+    let _: () = redis::cmd("FLUSHDB")
+        .query_async(&mut redis_conn)
+        .await
+        .unwrap();
+
+    let config = near_stream::ingest::IngestConfig {
+        neardata_base: mock_server.uri(),
+        last_block_path: "/v0/last_block/optimistic".to_string(),
+    };
+
+    let ingest_handle =
+        tokio::spawn(async move { near_stream::ingest::run_ingestor(config, redis_conn).await });
+
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    ingest_handle.abort();
+
+    assert_eq!(
+        final_path_hit.load(Ordering::SeqCst),
+        0,
+        "ingester hit /v0/last_block/final despite optimistic mode"
+    );
 }

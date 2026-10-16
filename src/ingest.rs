@@ -17,6 +17,9 @@ use tracing::{info, warn};
 #[derive(Clone)]
 pub struct IngestConfig {
     pub neardata_base: String,
+    /// Path on `neardata_base` that returns the latest known block height, e.g.
+    /// `/v0/last_block/final` (default) or `/v0/last_block/optimistic`.
+    pub last_block_path: String,
 }
 
 /// Result of attempting to fetch a block
@@ -39,11 +42,16 @@ fn create_http_client() -> Client {
         .expect("Failed to build HTTP client")
 }
 
-/// Discovers the latest finalized block height from neardata.xyz.
+/// Discovers the latest known block height from the block data API.
 ///
-/// Uses the /v0/last_block/final endpoint which redirects to /v0/block/<height>
+/// `cfg.last_block_path` is the bootstrap path. The default is
+/// `/v0/last_block/final`, which only returns blocks that have reached finality
+/// (slightly behind tip, but never reorged). `INGEST_MODE=optimistic` selects
+/// `/v0/last_block/optimistic`, which tracks produced blocks as soon as a
+/// validator publishes them. Optimistic is fine for tx notifications, but
+/// unsuitable for state indexing because produced blocks can be orphaned.
 async fn discover_latest_height(client: &Client, cfg: &IngestConfig) -> Result<u64> {
-    let url = format!("{}/v0/last_block/final", cfg.neardata_base);
+    let url = format!("{}{}", cfg.neardata_base, cfg.last_block_path);
     let resp = client.get(&url).send().await?;
     let status = resp.status();
 
@@ -70,7 +78,11 @@ async fn discover_latest_height(client: &Client, cfg: &IngestConfig) -> Result<u
             )
         })?;
 
-    info!(height, "Discovered latest finalized block");
+    info!(
+        height,
+        path = cfg.last_block_path,
+        "Discovered latest known block"
+    );
     Ok(height)
 }
 

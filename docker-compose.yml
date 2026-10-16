@@ -22,6 +22,7 @@ services:
       MODE: ingester
       REDIS_URL: redis://redis:6379
       NEARDATA_BASE: https://mainnet-teardata.intea.rs
+      # INGEST_MODE: optimistic  # uncomment to stream produced (pre-final) blocks
       POLL_RETRY_MS: 1000
       RUST_LOG: info
     depends_on:
